@@ -1,3 +1,8 @@
+// TODO: Add support for parallel requests
+// TODO: Add support for more configurations
+// TODO: Add support for polling configuration
+// TODO: Add support for a hook to handle Suspense
+
 import { getQueryClient } from '../queryClient';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { RequestOptions, Parameters } from '../Resource';
@@ -91,6 +96,45 @@ export function useController() {
         responseType
       )(reqBody);
     },
+    ...(_req.current.update
+      ? {
+          // When mutate is called:
+          onMutate: async (newData) => {
+            const [updateKey, updateFn] = _req.current?.update?.(newData) as [
+              string,
+              (data: unknown) => unknown
+            ];
+            // Cancel any outgoing refetches
+            // (so they don't overwrite our optimistic update)
+            await queryClient.cancelQueries({ queryKey: [updateKey] });
+
+            // Snapshot the previous value
+            const previousData = queryClient.getQueryData([updateKey]);
+
+            // Optimistically update to the new value
+            queryClient.setQueryData([updateKey], updateFn);
+
+            // Return a context with the previous and new todo
+            return { previousData, newData };
+          },
+          // If the mutation fails, use the context we returned above
+          onError: (err, newData, context) => {
+            const [updateKey] = _req.current?.update?.(newData) as [
+              string,
+              (data: unknown) => unknown
+            ];
+            queryClient.setQueryData([updateKey], context?.previousData);
+          },
+          // Always refetch after error or success:
+          onSettled: (newData) => {
+            const [updateKey] = _req.current?.update?.(newData) as [
+              string,
+              (data: unknown) => unknown
+            ];
+            queryClient.invalidateQueries({ queryKey: [updateKey] });
+          },
+        }
+      : {}),
   });
 
   return {

@@ -11,7 +11,7 @@ export interface RequestOptions<T> {
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD';
   responseType?: 'json' | 'text' | 'blob' | 'arraybuffer' | 'stream';
   extend: (options: Partial<RequestOptions<T>>) => RequestOptions<T>;
-  // update?: (data: unknown) => unknown;
+  update?: (data: unknown) => unknown;
 }
 
 const getQueryParams = (params?: Parameters) => {
