@@ -1,18 +1,9 @@
-export type Parameters = Record<
-  string,
-  string | number | boolean | undefined | null
->;
+import { RequestOptions, Parameters } from './request';
 
-export interface RequestOptions<T> {
-  url: (params: Parameters) => string;
-  headers: Parameters;
-  key: () => string;
-  model: new (...args: unknown[]) => unknown;
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD';
-  responseType?: 'json' | 'text' | 'blob' | 'arraybuffer' | 'stream';
-  extend: (options: Partial<RequestOptions<T>>) => RequestOptions<T>;
-  update?: (data: unknown) => unknown;
-}
+export type ResourceOptions = {
+  dataExpiryLength?: number;
+  pollFrequency?: number;
+};
 
 const getQueryParams = (params?: Parameters) => {
   const rawParams = Object.keys(params ?? {}).map((key) => [
@@ -39,6 +30,12 @@ export class Resource {
     return `${this.urlRoot}${getQueryParams(params)}`;
   }
 
+  static resourceOptions(): ResourceOptions {
+    return {
+      dataExpiryLength: 5 * 60 * 1000,
+    };
+  }
+
   static requestParams<T>() {
     const key = () => this.getKey();
     const baseOptions: RequestOptions<T> = {
@@ -50,6 +47,7 @@ export class Resource {
         Object.assign(baseOptions, options),
       headers: { 'Content-Type': 'application/json' },
       url: (params?: Parameters) => this.getUrl(params),
+      ...this.resourceOptions(),
     };
 
     return baseOptions;

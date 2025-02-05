@@ -1,9 +1,10 @@
 'use client';
+import { useDLE } from '@/lib/hooks/useDLE';
 import Product from '@/lib/resources/Product';
-import { useController, useDLE } from '@/lib/hooks/useRequest';
+import { useController } from '@/lib/hooks/useController';
 
 export default function Home() {
-  const { data, loading } = useDLE(Product.list(), null);
+  const { data, loading } = useDLE(Product.list(), {});
   const { data: product, loading: loadingProduct } = useDLE(Product.detail(), {
     id: 'e671',
   });
