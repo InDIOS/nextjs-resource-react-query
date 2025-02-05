@@ -1,14 +1,14 @@
-// TODO: Add support for parallel requests
 // TODO: Add support for more configurations
 // TODO: Add support for polling configuration
 // TODO: Add support for a hook to handle Suspense
 
-import { getQueryClient } from '../queryClient';
-import { useMutation, useQuery } from '@tanstack/react-query';
 import { RequestOptions, Parameters } from '../Resource';
-import { useRef } from 'react';
-
-const queryClient = getQueryClient();
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 type RequestBody = Record<string, unknown> | RequestInit['body'];
 
@@ -63,6 +63,7 @@ export function useDLE<Data>(
   req: RequestOptions<Data>,
   params: Parameters | null
 ) {
+  const queryClient = useQueryClient();
   const { url, headers: rawHeaders, method, responseType, key } = req;
   const urlFull = params !== null ? url(params) : '';
 
@@ -74,7 +75,7 @@ export function useDLE<Data>(
     {
       enabled: !!urlFull,
       queryKey: [key(), ...(params ? [params] : [])],
-      queryFn: () => getQueryFn(urlFull, method, rawHeaders, responseType)(),
+      queryFn: getQueryFn(urlFull, method, rawHeaders, responseType),
     },
     queryClient
   );
@@ -82,85 +83,76 @@ export function useDLE<Data>(
   return { data, loading, error };
 }
 
+type ResourceParams<Data> = {
+  req: RequestOptions<Data>;
+  params: Parameters;
+  reqBody?: RequestBody;
+};
+
 export function useController() {
-  const _params = useRef<Parameters>({});
-  const _req = useRef({} as unknown as RequestOptions<unknown>);
+  const queryClient = useQueryClient();
 
-  const mutation = useMutation({
-    mutationFn: (reqBody?: RequestBody) => {
-      const { url, headers: rawHeaders, method, responseType } = _req.current;
-      return getQueryFn(
-        url(_params.current),
-        method,
-        rawHeaders,
-        responseType
-      )(reqBody);
+  const { mutateAsync } = useMutation({
+    mutationFn: async ({ req, params, reqBody }: ResourceParams<unknown>) => {
+      const { url, headers: rawHeaders, method, responseType } = req;
+      const urlFull = params !== null ? url(params) : '';
+      return getQueryFn(urlFull, method, rawHeaders, responseType)(reqBody);
     },
-    ...(_req.current.update
-      ? {
-          // When mutate is called:
-          onMutate: async (newData) => {
-            const [updateKey, updateFn] = _req.current?.update?.(newData) as [
-              string,
-              (data: unknown) => unknown
-            ];
-            // Cancel any outgoing refetches
-            // (so they don't overwrite our optimistic update)
-            await queryClient.cancelQueries({ queryKey: [updateKey] });
-
-            // Snapshot the previous value
-            const previousData = queryClient.getQueryData([updateKey]);
-
-            // Optimistically update to the new value
-            queryClient.setQueryData([updateKey], updateFn);
-
-            // Return a context with the previous and new todo
-            return { previousData, newData };
-          },
-          // If the mutation fails, use the context we returned above
-          onError: (err, newData, context) => {
-            const [updateKey] = _req.current?.update?.(newData) as [
-              string,
-              (data: unknown) => unknown
-            ];
-            queryClient.setQueryData([updateKey], context?.previousData);
-          },
-          // Always refetch after error or success:
-          onSettled: (newData) => {
-            const [updateKey] = _req.current?.update?.(newData) as [
-              string,
-              (data: unknown) => unknown
-            ];
-            queryClient.invalidateQueries({ queryKey: [updateKey] });
-          },
-        }
-      : {}),
+    onSuccess: (_, { req, params }) => {
+      queryClient.invalidateQueries({
+        queryKey: [req.key(), ...(params ? [params] : [])],
+      });
+    },
   });
 
-  return {
-    fetch: async <Data>(
-      req: RequestOptions<Data>,
-      params: Parameters,
-      reqBody: RequestBody
-    ) => {
-      if (req.method === 'GET') {
-        console.warn(
-          'GET request on this method is not supported yet. Use invalidate instead.'
-        );
-        return;
-      }
-      _req.current = req;
-      _params.current = params;
-      try {
-        return (await mutation.mutateAsync(reqBody)) as Data;
-      } catch (error) {
-        throw error;
-      }
-    },
-    invalidate: (key: string, params?: Parameters, exact = false) =>
-      queryClient.invalidateQueries({
-        queryKey: [key, ...(params ? [params] : [])],
-        exact,
-      }),
+  const fetch = async <Data>(
+    req: RequestOptions<Data>,
+    params: Parameters,
+    reqBody?: RequestBody
+  ) => {
+    const { url, headers: rawHeaders, method, responseType, key } = req;
+    const urlFull = params !== null ? url(params) : '';
+
+    if (method === 'GET') {
+      await queryClient.fetchQuery({
+        queryKey: [key(), ...(params ? [params] : [])],
+        queryFn: getQueryFn(urlFull, method, rawHeaders, responseType),
+      });
+      return;
+    }
+
+    return mutateAsync({ req, params, reqBody }) as Data;
   };
+
+  const invalidate = (key: string, params?: Parameters, exact = false) =>
+    queryClient.invalidateQueries({
+      queryKey: [key, ...(params ? [params] : [])],
+      exact,
+    });
+
+  return { fetch, invalidate };
+}
+
+export function useResources(
+  ...resources: [RequestOptions<unknown>, Parameters][]
+) {
+  const queries = useQueries({
+    queries: resources.map((resource) => {
+      const [req, params] = resource;
+      const { url, headers: rawHeaders, method, responseType, key } = req;
+      const urlFull = params !== null ? url(params) : '';
+
+      return {
+        enabled: !!urlFull,
+        queryKey: [key(), ...(params ? [params] : [])],
+        queryFn: getQueryFn(urlFull, method, rawHeaders, responseType),
+      };
+    }),
+  });
+
+  return queries.map((query) => ({
+    data: query.data,
+    loading: query.isLoading,
+    error: query.error,
+  }));
 }
