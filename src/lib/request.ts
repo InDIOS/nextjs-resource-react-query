@@ -13,7 +13,7 @@ export interface RequestOptions<T> extends ResourceOptions {
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD';
   responseType?: 'json' | 'text' | 'blob' | 'arraybuffer' | 'stream';
   extend: (options: Partial<RequestOptions<T>>) => RequestOptions<T>;
-  update?: (data: unknown) => unknown;
+  update?: (data: unknown, reqBody?: RequestBody) => unknown;
 }
 
 export type RequestBody = Record<string, unknown> | RequestInit['body'];
