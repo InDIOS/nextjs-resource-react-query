@@ -1,19 +1,14 @@
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useSuspenseQueries } from '@tanstack/react-query';
 import { RequestOptions, Parameters, requestFn } from '../request';
 
-// TODO: Add support for a hook to handle Suspense
 export function useResources<T extends unknown[]>(
   ...resources: { [K in keyof T]: [RequestOptions<T[K]>, Parameters] }
 ): {
-  [K in keyof T]: {
-    data: T[K] | undefined;
-    loading: boolean;
-    error: Error | null;
-  };
+  [K in keyof T]: T[K] | undefined;
 } {
   const queryClient = useQueryClient();
 
-  const queries = useQueries(
+  const queries = useSuspenseQueries(
     {
       queries: resources.map((resource) => {
         const [req, params] = resource;
@@ -39,15 +34,7 @@ export function useResources<T extends unknown[]>(
     queryClient
   );
 
-  return queries.map((query) => ({
-    data: query.data,
-    loading: query.isLoading,
-    error: query.error,
-  })) as {
-    [K in keyof T]: {
-      data: T[K] | undefined;
-      loading: boolean;
-      error: Error | null;
-    };
+  return queries.map((query) => query.data) as {
+    [K in keyof T]: T[K] | undefined;
   };
 }
